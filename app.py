@@ -9,7 +9,7 @@ CORS(app)
 
 DB_PATH = "db.sqlite3"
 
-# ✅ 학번+이름 해시 처리 함수
+# 🔐 해시 생성 함수 (익명화용)
 def hash_identifier(student_id, name):
     raw = f"{student_id}_{name}"
     return hashlib.sha256(raw.encode()).hexdigest()
@@ -19,7 +19,7 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
 
-    # teams 테이블
+    # 팀 테이블
     c.execute('''
         CREATE TABLE IF NOT EXISTS teams (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -28,15 +28,17 @@ def init_db():
         )
     ''')
 
-    # voters 테이블 (익명 해시 저장)
+    # 참여자 테이블 (익명 해시 + 실명)
     c.execute('''
         CREATE TABLE IF NOT EXISTS voters (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_id TEXT,
+            name TEXT,
             identifier_hash TEXT UNIQUE
         )
     ''')
 
-    # 팀이 없으면 초기화
+    # 팀 데이터 초기화
     c.execute("SELECT COUNT(*) FROM teams")
     if c.fetchone()[0] == 0:
         for i in range(1, 11):
@@ -71,17 +73,7 @@ def can_vote():
 
     return jsonify({"can_vote": not already_voted})
 
-@app.route("/results", methods=["GET"])
-def get_results():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT name, votes FROM teams ORDER BY votes DESC")
-    results = [{"name": row[0], "votes": row[1]} for row in c.fetchall()]
-    conn.close()
-    return jsonify(results)
-
-
-# ✅ 투표 수행 (한 번만 가능)
+# ✅ 투표 처리
 @app.route("/vote/<int:team_id>", methods=["POST"])
 def vote_team(team_id):
     data = request.json
@@ -92,21 +84,47 @@ def vote_team(team_id):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
 
-    # 중복 투표 확인
+    # 중복 확인
     c.execute("SELECT 1 FROM voters WHERE identifier_hash = ?", (identifier_hash,))
     if c.fetchone():
         conn.close()
         return jsonify({"success": False, "message": "이미 투표하셨습니다."}), 403
 
-    # 투표 및 해시 저장
+    # 투표 반영 + 참여자 기록 저장
     c.execute("UPDATE teams SET votes = votes + 1 WHERE id = ?", (team_id,))
-    c.execute("INSERT INTO voters (identifier_hash) VALUES (?)", (identifier_hash,))
+    c.execute("INSERT INTO voters (student_id, name, identifier_hash) VALUES (?, ?, ?)",
+              (student_id, name, identifier_hash))
     conn.commit()
     conn.close()
 
-    return jsonify({"success": True, "message": f"Team {team_id}에 투표 완료되었습니다."})
+    return jsonify({"success": True, "message": f"{team_id}번 팀에 투표 완료"})
 
-# ✅ 투표 수 초기화 (선택, 관리자용)
+# ✅ 간단 결과 조회 (팀별)
+@app.route("/results", methods=["GET"])
+def get_results():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT name, votes FROM teams ORDER BY votes DESC")
+    results = [{"name": row[0], "votes": row[1]} for row in c.fetchall()]
+    conn.close()
+    return jsonify(results)
+
+# ✅ 전체 결과 조회 (팀 + 참여자)
+@app.route("/results_full", methods=["GET"])
+def results_full():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+
+    c.execute("SELECT name, votes FROM teams ORDER BY votes DESC")
+    teams = [{"name": row[0], "votes": row[1]} for row in c.fetchall()]
+
+    c.execute("SELECT student_id, name FROM voters")
+    voters = [{"student_id": row[0], "name": row[1]} for row in c.fetchall()]
+
+    conn.close()
+    return jsonify({"teams": teams, "voters": voters})
+
+# ✅ 투표 및 기록 초기화
 @app.route("/reset", methods=["POST"])
 def reset_votes():
     conn = sqlite3.connect(DB_PATH)
@@ -115,9 +133,9 @@ def reset_votes():
     c.execute("DELETE FROM voters")
     conn.commit()
     conn.close()
-    return jsonify({"success": True, "message": "투표 및 참여자 기록이 초기화되었습니다."})
+    return jsonify({"success": True, "message": "모든 투표 및 참여 기록이 초기화되었습니다."})
 
-# ✅ 앱 실행
+# ✅ 서버 실행
 if __name__ == "__main__":
     init_db()
     app.run(host="0.0.0.0", port=5000)
