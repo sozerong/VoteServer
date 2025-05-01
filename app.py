@@ -1,8 +1,9 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_file
 from flask_cors import CORS
 import sqlite3
 import os
 import hashlib
+import shutil  # ✅ 백업용
 
 app = Flask(__name__)
 CORS(app)
@@ -13,6 +14,25 @@ DB_PATH = "db.sqlite3"
 def hash_identifier(student_id, name):
     raw = f"{student_id}_{name}"
     return hashlib.sha256(raw.encode()).hexdigest()
+
+
+
+# ✅ DB 백업 (파일 복사)
+@app.route("/backup_db", methods=["POST"])
+def backup_db():
+    try:
+        shutil.copy(DB_PATH, "db_backup.sqlite3")
+        return jsonify({"success": True, "message": "백업이 완료되었습니다."})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+# ✅ 백업 파일 다운로드
+@app.route("/download_backup", methods=["GET"])
+def download_backup():
+    if not os.path.exists("db_backup.sqlite3"):
+        return jsonify({"success": False, "message": "백업 파일이 존재하지 않습니다."}), 404
+    return send_file("db_backup.sqlite3", as_attachment=True)
+
 
 # ✅ DB 초기화 함수
 def init_db():
