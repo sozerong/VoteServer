@@ -149,9 +149,15 @@ def results_full():
 def reset_votes():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
+
+    # 데이터 삭제
     c.execute("DELETE FROM voters")
     c.execute("DELETE FROM teams")
     conn.commit()
+
+    # ✅ AUTOINCREMENT 리셋 (ID 다시 1부터 시작)
+    c.execute("DELETE FROM sqlite_sequence WHERE name='teams'")
+    c.execute("DELETE FROM sqlite_sequence WHERE name='voters'")
 
     # 팀 다시 삽입
     for i in range(1, 12):
@@ -159,7 +165,9 @@ def reset_votes():
 
     conn.commit()
     conn.close()
-    return jsonify({"success": True, "message": "전체 리셋 완료 (팀 + 투표)"})
+
+    return jsonify({"success": True, "message": "전체 리셋 완료 (팀 + 투표 + ID 초기화)"})
+
 
 # ✅ 서버 실행
 if __name__ == "__main__":
