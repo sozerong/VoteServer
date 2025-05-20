@@ -61,7 +61,7 @@ def init_db():
     # 팀 데이터 초기화
     c.execute("SELECT COUNT(*) FROM teams")
     if c.fetchone()[0] == 0:
-        for i in range(1, 11):
+        for i in range(1, 12):
             c.execute("INSERT INTO teams (name, votes) VALUES (?, ?)", (f"Team {i}", 0))
 
     conn.commit()
